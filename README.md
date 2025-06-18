@@ -35,8 +35,8 @@ This server acts as a drop-in replacement for the RainViewer API. When the TopSk
 
 ### 1. Clone the Repository
 ```sh
-git clone https://github.com/yourusername/topsky-wxr-radar-converter-v2.git
-cd topsky-wxr-radar-converter-v2
+git clone https://github.com/jonohanekom/topsky-wxr-radar-bridge.git
+cd topsky-wxr-radar-bridge
 ```
 
 ### 2. Install Dependencies
