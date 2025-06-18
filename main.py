@@ -43,6 +43,18 @@ async def log_requests(request: Request, call_next):
     print(f"← {response.status_code}")
     return response
 
+@app.middleware("http")
+async def normalize_path_middleware(request: Request, call_next):
+    # Normalize double slashes in the path
+    scope = request.scope
+    original_path = scope["path"]
+    normalized_path = original_path.replace("//", "/")
+    if normalized_path != original_path:
+        scope["path"] = normalized_path
+        # Rebuild the request with the new path
+        request = Request(scope, request.receive)
+    return await call_next(request)
+
 def latlon_to_tile(lat: float, lon: float, zoom: int) -> Tuple[int, int]:
     """
     Convert latitude and longitude to OWM tile x, y coordinates for a given zoom level.
