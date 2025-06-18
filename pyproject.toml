@@ -1,0 +1,19 @@
+[project]
+name = "weather-radar-api"
+version = "1.0.0"
+description = "Weather Radar API for TopSky Plugin"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "httpx>=0.25.0",
+    "pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "python-dotenv"
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "black>=23.0.0",
+]
