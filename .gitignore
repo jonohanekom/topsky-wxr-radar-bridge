@@ -9,6 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
+# Editor Config
+.vscode/
 
 #env
 .env

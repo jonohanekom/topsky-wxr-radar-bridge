@@ -1,4 +1,4 @@
-# topsky weather radar bridge
+# TopSky weather radar bridge
 [![Status](https://img.shields.io/badge/status-in_development-orange)](https://github.com/your-username/readback)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
