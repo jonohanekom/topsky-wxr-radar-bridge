@@ -42,12 +42,14 @@ cd topsky-wxr-radar-bridge
 ### 2. Install Dependencies
 This project uses [uvicorn](https://www.uvicorn.org/), [FastAPI](https://fastapi.tiangolo.com/), [httpx](https://www.python-httpx.org/), and [Pillow](https://python-pillow.org/).
 
+Install [uv](https://github.com/astral-sh/uv) if you don't have it:
 ```sh
-pip install -r requirements.txt
+pip install uv
 ```
-Or, if using Poetry:
+
+Then install dependencies:
 ```sh
-poetry install
+uv pip install -r requirements.txt
 ```
 
 ### 3. Set Up Environment Variables
