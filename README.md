@@ -49,7 +49,7 @@ pip install uv
 
 Then install dependencies:
 ```sh
-uv pip install -r requirements.txt
+uv pip install -r pyproject.toml
 ```
 
 ### 3. Set Up Environment Variables
