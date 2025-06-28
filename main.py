@@ -131,9 +131,9 @@ async def create_stitched_tile(
 
     # 3. Calculate the range of OWM tiles we need to fetch
     start_tile_x = math.floor(top_left_px_x / 256)
-    end_tile_x = math.floor((top_left_px_x + width) / 256)
+    end_tile_x = math.ceil((top_left_px_x + width) / 256)
     start_tile_y = math.floor(top_left_px_y / 256)
-    end_tile_y = math.floor((top_left_px_y + height) / 256)
+    end_tile_y = math.ceil((top_left_px_y + height) / 256)
     
     print(f"Tile grid to fetch: x=[{start_tile_x}...{end_tile_x}], y=[{start_tile_y}...{end_tile_y}]")
 
@@ -276,7 +276,13 @@ async def radar_tile_topsky_stitched(
         # so we handle floats before converting to int.
         width = int(float(size_str))
         height = int(float(size_str))
-        zoom = int(float(zoom_str))
+        # --- ZOOM MODIFICATION ---
+        # We add +1 to the zoom level requested by the client.
+        # This allows the client to request a wider area (lower zoom)
+        # while the server fetches higher-resolution tiles for that area.
+        zoom = int(float(zoom_str)) + 1
+        print(f"Applying zoom multiplier: client zoom={zoom_str}, server fetch zoom={zoom}")
+        # -------------------------
         lat = float(lat_str)
         lon = float(lon_str)
     except ValueError as e:

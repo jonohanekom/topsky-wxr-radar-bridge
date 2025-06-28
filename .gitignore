@@ -17,4 +17,6 @@ wheels/
 .env
 
 # Context files
+/Context
 CONTEXT.md
+HISTORY.md
