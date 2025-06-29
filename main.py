@@ -2,12 +2,13 @@ import os
 import math
 import time
 from io import BytesIO
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Union
 import httpx
 from fastapi import FastAPI, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
+import asyncio
 
 # Add dotenv support to load .env file automatically
 from dotenv import load_dotenv
@@ -68,14 +69,105 @@ def latlon_to_tile(lat: float, lon: float, zoom: int) -> Tuple[int, int]:
     y = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
     return x, y
 
-def create_blank_tile() -> bytes:
+def latlon_to_world_pixels(lat: float, lon: float, zoom: int) -> Tuple[float, float]:
+    """Converts lat/lon to world pixel coordinates at a given zoom level."""
+    lat_rad = math.radians(lat)
+    n = 2.0 ** zoom
+    x = (lon + 180.0) / 360.0 * n * 256
+    y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n * 256
+    return x, y
+
+def create_blank_tile(width: int = 256, height: int = 256) -> bytes:
     """
-    Create a fully transparent 256x256 PNG tile.
+    Create a fully transparent PNG tile of a given size.
     Used as a fallback for errors or missing data.
     """
-    img = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     buf = BytesIO()
     img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf.getvalue()
+
+async def fetch_tile_async(client: httpx.AsyncClient, z: int, x: int, y: int) -> Union[bytes, None]:
+    """Asynchronously fetches a single tile from OWM."""
+    tile_url = f"https://tile.openweathermap.org/map/{TILE_LAYER}/{z}/{x}/{y}.png"
+    try:
+        resp = await client.get(tile_url, params={"appid": OPENWEATHER_API_KEY})
+        if resp.status_code == 200:
+            return resp.content
+        # For 404s (tile doesn't exist), we'll return None and handle it as a blank tile
+        if resp.status_code == 404:
+            print(f"Tile not found (404): {tile_url}")
+            return None
+        resp.raise_for_status() # Raise for other errors like 401, 500, etc.
+        return resp.content
+    except httpx.RequestError as e:
+        print(f"HTTP error fetching tile {z}/{x}/{y}: {e}")
+        return None
+    except Exception as e:
+        print(f"Generic error fetching tile {z}/{x}/{y}: {e}")
+        return None
+
+async def create_stitched_tile(
+    zoom: int,
+    center_lat: float,
+    center_lon: float,
+    width: int,
+    height: int,
+) -> bytes:
+    """
+    Creates a large, high-resolution composite tile by fetching and stitching multiple OWM tiles.
+    """
+    print(
+        f"Creating stitched tile: zoom={zoom}, center=({center_lat}, {center_lon}), "
+        f"size=({width}x{height})"
+    )
+    # 1. Find the pixel coordinates of the center point in the world map
+    center_px_x, center_px_y = latlon_to_world_pixels(center_lat, center_lon, zoom)
+
+    # 2. Determine the top-left corner of our composite image in world pixels
+    top_left_px_x = center_px_x - width / 2
+    top_left_px_y = center_px_y - height / 2
+
+    # 3. Calculate the range of OWM tiles we need to fetch
+    start_tile_x = math.floor(top_left_px_x / 256)
+    end_tile_x = math.ceil((top_left_px_x + width) / 256)
+    start_tile_y = math.floor(top_left_px_y / 256)
+    end_tile_y = math.ceil((top_left_px_y + height) / 256)
+    
+    print(f"Tile grid to fetch: x=[{start_tile_x}...{end_tile_x}], y=[{start_tile_y}...{end_tile_y}]")
+
+    # 4. Fetch all required tiles asynchronously
+    tasks = []
+    tile_coords = []
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for y in range(start_tile_y, end_tile_y + 1):
+            for x in range(start_tile_x, end_tile_x + 1):
+                tasks.append(fetch_tile_async(client, zoom, x, y))
+                tile_coords.append((x, y))
+        
+        fetched_tiles_data = await asyncio.gather(*tasks)
+
+    # 5. Create the composite image and paste the fetched tiles
+    composite_image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    
+    for i, tile_data in enumerate(fetched_tiles_data):
+        if tile_data:
+            try:
+                tile_image = Image.open(BytesIO(tile_data)).convert("RGBA")
+                tile_x, tile_y = tile_coords[i]
+
+                # Calculate the paste position on the composite image
+                paste_x = round(tile_x * 256 - top_left_px_x)
+                paste_y = round(tile_y * 256 - top_left_px_y)
+
+                composite_image.paste(tile_image, (paste_x, paste_y))
+            except Exception as e:
+                print(f"Error processing tile {tile_coords[i]}: {e}")
+
+    # 6. Return the final image as bytes
+    buf = BytesIO()
+    composite_image.save(buf, format="PNG")
     buf.seek(0)
     return buf.getvalue()
 
@@ -166,28 +258,51 @@ async def radar_tile_standard(timestamp: int, z: int, x: int, y: int):
     tile_bytes = fetch_and_return_tile(z, x, y)
     return Response(content=tile_bytes, media_type="image/png")
 
-@app.get("/v2/radar/{timestamp}/{x}/{z}/{lon}/{lat}/.png")
-async def radar_tile_topsky(timestamp: int, x: int, z: int, lon: str, lat: str):
+@app.get("/v2/radar/{timestamp}/{size_str}/{zoom_str}/{lat_str}/{lon_str}/.png")
+async def radar_tile_topsky_stitched(
+    timestamp: str,
+    size_str: str,
+    zoom_str: str,
+    lat_str: str,
+    lon_str: str,
+):
     """
-    TopSky/EuroScope specific radar tile endpoint with lat/lon parameters.
-    Converts lat/lon to tile coordinates and fetches the correct OWM tile.
+    New TopSky endpoint that correctly interprets the URL format and generates stitched tiles.
+    The URL format is: /v2/radar/{timestamp}/{size}/{zoom}/{lat}/{lon}/.png
     """
-    print(f"TopSky radar tile request: timestamp={timestamp}, x={x}, z={z}, lon={lon}, lat={lat}")
+    print(f"Stitched TopSky Request: ts={timestamp}, size={size_str}, zoom={zoom_str}, lat={lat_str}, lon={lon_str}")
     try:
-        lon_f = float(lon)
-        lat_f = float(lat)
+        # FastAPI's path converter can sometimes pass values like '512.0'
+        # so we handle floats before converting to int.
+        width = int(float(size_str))
+        height = int(float(size_str))
+        # --- ZOOM MODIFICATION ---
+        # We add +1 to the zoom level requested by the client.
+        # This allows the client to request a wider area (lower zoom)
+        # while the server fetches higher-resolution tiles for that area.
+        zoom = int(float(zoom_str)) + 1
+        print(f"Applying zoom multiplier: client zoom={zoom_str}, server fetch zoom={zoom}")
+        # -------------------------
+        lat = float(lat_str)
+        lon = float(lon_str)
+    except ValueError as e:
+        print(f"Error converting path parameters: {e}")
+        # Use a default size for the blank tile if conversion fails early
+        return Response(content=create_blank_tile(512, 512), media_type="image/png")
+
+    try:
+        image_bytes = await create_stitched_tile(
+            zoom=zoom,
+            center_lat=lat,
+            center_lon=lon,
+            width=width,
+            height=height,
+        )
+        return Response(content=image_bytes, media_type="image/png")
     except Exception as e:
-        print(f"Error converting lon/lat: {e}")
-        return Response(content=create_blank_tile(), media_type="image/png")
-    
-    # Convert lat/lon to tile coordinates
-    tile_x, tile_y = latlon_to_tile(lat_f, lon_f, z)
-    print(f"Converted lat/lon to tile_x={tile_x}, tile_y={tile_y}")
-    
-    # Use calculated tile coordinates (not the provided x value)
-    print(f"Using calculated coordinates: z={z}, x={tile_x}, y={tile_y}")
-    tile_bytes = fetch_and_return_tile(z, tile_x, tile_y)
-    return Response(content=tile_bytes, media_type="image/png")
+        print(f"Error creating stitched tile: {e}")
+        # Return a blank tile of the requested size on error
+        return Response(content=create_blank_tile(width, height), media_type="image/png")
 
 @app.get("/v2/radar/nowcast_{nowcast_id}/{z}/{x}/{y}.png")
 async def nowcast_tile_standard(nowcast_id: str, z: int, x: int, y: int):
@@ -199,14 +314,21 @@ async def nowcast_tile_standard(nowcast_id: str, z: int, x: int, y: int):
     tile_bytes = fetch_and_return_tile(z, x, y)
     return Response(content=tile_bytes, media_type="image/png")
 
-@app.get("/v2/radar/nowcast_{nowcast_id}/{x}/{z}/{lon:float}/{lat:float}/.png")
-async def nowcast_tile_topsky(nowcast_id: str, x: int, z: int, lon: float, lat: float):
+@app.get("/v2/radar/nowcast_{nowcast_id}/{x}/{z}/{lon}/{lat}/.png")
+async def nowcast_tile_topsky(nowcast_id: str, x: str, z: int, lon: str, lat: str):
     """
     TopSky/EuroScope specific nowcast tile endpoint with lat/lon parameters.
     Converts lat/lon to tile coordinates and fetches the correct OWM tile.
     """
     print(f"TopSky nowcast tile request: nowcast_id={nowcast_id}, x={x}, z={z}, lon={lon}, lat={lat}")
-    tile_x, tile_y = latlon_to_tile(lat, lon, z)
+    try:
+        lon_f = float(lon)
+        lat_f = float(lat)
+    except ValueError as e:
+        print(f"Error converting nowcast lon/lat: {e}")
+        return Response(content=create_blank_tile(), media_type="image/png")
+
+    tile_x, tile_y = latlon_to_tile(lat_f, lon_f, z)
     print(f"Converted lat/lon to tile_x={tile_x}, tile_y={tile_y}")
     
     # Use calculated tile coordinates (not the provided x value)
