@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Application version
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 # Configuration loading with fallback to environment variables
 def load_config():
