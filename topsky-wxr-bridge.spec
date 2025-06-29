@@ -2,15 +2,22 @@
 # PyInstaller spec file for TopSky Weather Radar Bridge
 
 import sys
-from PyInstaller.utils.hooks import collect_data_files
+import os
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # Collect data files from packages that might need them
 datas = []
-datas += collect_data_files('uvicorn')
-datas += collect_data_files('fastapi')
+try:
+    datas += collect_data_files('uvicorn')
+except Exception:
+    pass
+try:
+    datas += collect_data_files('fastapi')
+except Exception:
+    pass
 
-# Add the config.ini template to the distribution
-datas += [('config.ini', '.')]
+# Don't include config.ini in the executable - it should be external
+# datas += [('config.ini', '.')]
 
 a = Analysis(
     ['main.py'],
@@ -18,6 +25,9 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        'uvicorn',
+        'uvicorn.main',
+        'uvicorn.server',
         'uvicorn.lifespan.on',
         'uvicorn.lifespan.off',
         'uvicorn.protocols.websockets.auto',
@@ -29,13 +39,23 @@ a = Analysis(
         'uvicorn.loops.auto',
         'uvicorn.loops.asyncio',
         'uvicorn.loops.uvloop',
+        'fastapi',
+        'fastapi.applications',
         'fastapi.openapi.constants',
+        'fastapi.middleware',
+        'fastapi.middleware.cors',
+        'httpx',
         'httpx._client',
         'httpx._config',
         'httpx._models',
         'httpx._exceptions',
+        'PIL',
+        'PIL.Image',
         'PIL._tkinter_finder',
         'configparser',
+        'asyncio',
+        'dotenv',
+        'python_dotenv',
     ],
     hookspath=[],
     hooksconfig={},
@@ -79,6 +99,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='version_info.txt',
+    version=None,  # Disable version file for now to avoid path issues
     icon=None,
 )

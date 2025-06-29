@@ -25,19 +25,36 @@ jobs:
         
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller topsky-wxr-bridge.spec
+        pyinstaller --clean topsky-wxr-bridge.spec
+        dir dist
+        
+    - name: Verify executable exists
+      run: |
+        if (Test-Path "dist\topsky-wxr-bridge.exe") {
+          Write-Host "✅ Executable found!"
+          $size = (Get-Item "dist\topsky-wxr-bridge.exe").Length
+          Write-Host "📁 Size: $($size / 1MB) MB"
+        } else {
+          Write-Host "❌ Executable not found!"
+          dir dist
+          exit 1
+        }
         
     - name: Create release package
       run: |
         mkdir release-package
-        copy dist\topsky-wxr-bridge.exe release-package\
-        copy config.ini release-package\
-        copy INSTALL.md release-package\
-        copy README.txt release-package\
+        copy "dist\topsky-wxr-bridge.exe" "release-package\"
+        copy "config.ini" "release-package\"
+        copy "INSTALL.md" "release-package\"
+        copy "README.txt" "release-package\"
+        dir release-package
         
     - name: Create ZIP archive
       run: |
         powershell Compress-Archive -Path release-package\* -DestinationPath topsky-wxr-bridge-${{ github.ref_name }}-windows.zip
+        Write-Host "📦 ZIP file created:"
+        $zipSize = (Get-Item "topsky-wxr-bridge-${{ github.ref_name }}-windows.zip").Length
+        Write-Host "📁 ZIP Size: $($zipSize / 1MB) MB"
         
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
