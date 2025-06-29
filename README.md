@@ -11,8 +11,10 @@ A FastAPI-based server that mimics the RainViewer API, allowing the TopSky plugi
 
 - **RainViewer-compatible API**: Seamlessly integrates with TopSky/EuroScope and other clients expecting the RainViewer API.
 - **Real Precipitation Data**: Fetches and serves live radar tiles from OpenWeatherMap.
+- **High-Resolution Tile Stitching**: Creates composite tiles by combining multiple OWM tiles for enhanced detail and custom resolutions.
 - **Multiple Endpoints**: Supports both standard RainViewer and TopSky/EuroScope-specific tile formats.
-- **PNG Compatibility**: Always returns valid, fully opaque or transparent 256x256 PNGs for maximum plugin compatibility.
+- **Asynchronous Performance**: Concurrent tile fetching for improved response times.
+- **PNG Compatibility**: Returns valid PNG tiles with configurable dimensions for maximum plugin compatibility.
 - **CORS & Error Handling**: Handles CORS, logs requests, and returns blank tiles for errors or unknown routes.
 - **Configurable**: Easily configure API keys, base URL, and tile layer via environment variables.
 
@@ -23,11 +25,12 @@ A FastAPI-based server that mimics the RainViewer API, allowing the TopSky plugi
 This server acts as a drop-in replacement for the RainViewer API. When the TopSky plugin requests weather radar tiles, the server:
 
 1. **Receives the tile request** (including non-standard TopSky/EuroScope routes with lat/lon).
-2. **Converts lat/lon to OWM tile coordinates** (if needed).
-3. **Fetches the corresponding radar tile** from OpenWeatherMap using your API key.
-4. **Processes the image** to ensure maximum compatibility (RGBA, 256x256, no advanced PNG features).
-5. **Returns the PNG tile** to the client. If OWM returns an error or the area is out of range, a blank tile is returned.
-6. **Serves a RainViewer-compatible weather-maps.json** for time navigation.
+2. **Determines tile strategy**: For high-resolution requests, calculates multiple source tiles needed for stitching.
+3. **Fetches radar data** asynchronously from OpenWeatherMap using concurrent requests for optimal performance.
+4. **Creates composite tiles** by stitching multiple OWM tiles together for enhanced resolution and custom dimensions.
+5. **Processes the image** to ensure maximum compatibility (RGBA, configurable dimensions, optimized PNG format).
+6. **Returns the PNG tile** to the client. If OWM returns errors or areas are out of range, blank tiles are returned.
+7. **Serves a RainViewer-compatible weather-maps.json** for time navigation.
 
 ---
 
@@ -68,6 +71,7 @@ WXR_Server=http://localhost:8000
 WXR_TimeStampsURL=http://localhost:8000/public/weather-maps.json
 WXR_Page_Prefix=/v2/radar/
 WXR_Page_Suffix=.png
+WXR_Zoom=4
 ```
 
 ### 5. Run the Server
@@ -99,7 +103,7 @@ You can set these in a `.env` file or as environment variables.
 
 - `/public/weather-maps.json` — RainViewer-compatible metadata for radar/satellite layers
 - `/v2/radar/{timestamp}/{z}/{x}/{y}.png` — Standard RainViewer radar tile
-- `/v2/radar/{timestamp}/{x}/{z}/{lon}/{lat}/.png` — TopSky/EuroScope-specific tile (lat/lon)
+- `/v2/radar/{timestamp}/{size}/{zoom}/{lat}/{lon}/.png` — TopSky/EuroScope high-resolution stitched tile
 - `/v2/satellite/...` — Returns blank tiles (satellite not implemented)
 - `/health` — Health check
 
@@ -108,8 +112,9 @@ You can set these in a `.env` file or as environment variables.
 ## For TopSky/EuroScope Users
 
 - Set your WXR server to `http://localhost:8000` (or your server's address)
-- Make sure your plugin's image size and zoom settings match the server's output (default: 256x256, zoom 3-5 recommended)
-- The server will automatically convert TopSky's lat/lon requests to the correct OWM tile
+- Configure your plugin's image size and zoom settings (supports custom dimensions via stitching)
+- The server automatically creates high-resolution composite tiles by stitching multiple OWM tiles
+- Zoom levels are automatically adjusted (+1) to fetch higher resolution source data for better detail
 
 ---
 
@@ -122,7 +127,9 @@ You can set these in a `.env` file or as environment variables.
 - **400 Bad Request from OWM?**
   - This usually means the tile coordinates are out of range for the zoom level. The server now auto-corrects this for TopSky.
 - **Want higher resolution?**
-  - Increase the zoom level in your TopSky config, but note that higher zoom covers a smaller area per tile.
+  - The server now automatically creates high-resolution tiles by stitching multiple source tiles together.
+  - Configure custom tile dimensions in your TopSky settings for optimal display quality.
+  - Higher zoom levels provide more detail while maintaining coverage area through tile stitching.
 
 ---
 
