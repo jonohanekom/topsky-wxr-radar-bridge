@@ -3,6 +3,8 @@ import math
 import time
 from io import BytesIO
 from typing import Tuple, Dict, Any, Union
+import configparser
+import sys
 import httpx
 from fastapi import FastAPI, Response, Request
 from fastapi.responses import JSONResponse
@@ -10,14 +12,50 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import asyncio
 
-# Add dotenv support to load .env file automatically
+# Add dotenv support to load .env file automatically (for development)
 from dotenv import load_dotenv
 load_dotenv()
 
-# Config
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
-TILE_LAYER = os.getenv("TILE_LAYER", "precipitation_new")  # Now also loaded from .env if set
+# Application version
+__version__ = "1.0.0"
+
+# Configuration loading with fallback to environment variables
+def load_config():
+    """Load configuration from config.ini file or environment variables as fallback."""
+    config = configparser.ConfigParser()
+    
+    # Try to load from config.ini first
+    config_file = "config.ini"
+    if os.path.exists(config_file):
+        print(f"Loading configuration from {config_file}")
+        config.read(config_file)
+        
+        # Get values from config file
+        api_key = config.get('openweathermap', 'api_key', fallback=None)
+        base_url = config.get('server', 'base_url', fallback="http://localhost:8000")
+        tile_layer = config.get('openweathermap', 'tile_layer', fallback="precipitation_new")
+        
+        if not api_key or api_key == "YOUR_API_KEY_HERE":
+            print("ERROR: Please edit config.ini and set your OpenWeatherMap API key")
+            print("Get your API key from: https://openweathermap.org/api")
+            sys.exit(1)
+            
+        return api_key, base_url, tile_layer
+    else:
+        # Fallback to environment variables (for development)
+        print("config.ini not found, using environment variables")
+        api_key = os.getenv("OPENWEATHER_API_KEY")
+        base_url = os.getenv("BASE_URL", "http://localhost:8000")
+        tile_layer = os.getenv("TILE_LAYER", "precipitation_new")
+        
+        if not api_key:
+            print("ERROR: No API key found. Please create config.ini or set OPENWEATHER_API_KEY environment variable")
+            sys.exit(1)
+            
+        return api_key, base_url, tile_layer
+
+# Load configuration
+OPENWEATHER_API_KEY, BASE_URL, TILE_LAYER = load_config()
 # Available OWM tile layers:
 # - "precipitation_new" = Rain/snow intensity (current)
 # - "clouds_new" = Cloud cover percentage
@@ -26,7 +64,11 @@ TILE_LAYER = os.getenv("TILE_LAYER", "precipitation_new")  # Now also loaded fro
 # - "pressure_new" = Atmospheric pressure
 # - "humidity_new" = Relative humidity
 
-app = FastAPI(title="RainViewer Spoof API for TopSky")
+app = FastAPI(
+    title="TopSky Weather Radar Bridge",
+    description="A FastAPI server that bridges TopSky/EuroScope with OpenWeatherMap radar data",
+    version=__version__
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -346,8 +388,13 @@ async def satellite_tile(satellite_id: str, z: int, x: int, y: int):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "healthy", "timestamp": int(time.time())}
+    """Health check endpoint with version information."""
+    return {
+        "status": "healthy", 
+        "version": __version__,
+        "timestamp": int(time.time()),
+        "config_source": "config.ini" if os.path.exists("config.ini") else "environment"
+    }
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def catch_all(path: str):

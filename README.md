@@ -34,15 +34,51 @@ This server acts as a drop-in replacement for the RainViewer API. When the TopSk
 
 ---
 
-## Quickstart
+## For End Users (Pre-built Executable)
 
-### 1. Clone the Repository
+### Download and Install
+
+1. **Download** the latest release from the [Releases page](https://github.com/jonohanekom/topsky-wxr-radar-bridge/releases)
+2. **Extract** the ZIP file to any folder on your computer
+3. **Get a free API key** from [OpenWeatherMap](https://openweathermap.org/api)
+4. **Edit** `config.ini` and replace `YOUR_API_KEY_HERE` with your actual API key
+5. **Run** `topsky-wxr-bridge.exe`
+
+### TopSky Configuration
+
+Add these lines to your `TopSkySettings.txt` file:
+
+```
+WXR_Server=http://localhost:8000
+WXR_TimeStampsURL=http://localhost:8000/public/weather-maps.json
+WXR_Page_Prefix=/v2/radar/
+WXR_Page_Suffix=.png
+WXR_ImageSize=512
+WXR_Zoom=4
+```
+
+### Requirements
+
+- Windows 10/11
+- OpenWeatherMap API key (free)
+- TopSky plugin for EuroScope
+- Internet connection
+
+For detailed installation instructions, see `INSTALL.md` included in the release package.
+
+---
+
+## For Developers (Source Code)
+
+### Development Quickstart
+
+#### 1. Clone the Repository
 ```sh
 git clone https://github.com/jonohanekom/topsky-wxr-radar-bridge.git
 cd topsky-wxr-radar-bridge
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 This project uses [uvicorn](https://www.uvicorn.org/), [FastAPI](https://fastapi.tiangolo.com/), [httpx](https://www.python-httpx.org/), and [Pillow](https://python-pillow.org/).
 
 Install [uv](https://github.com/astral-sh/uv) if you don't have it:
@@ -55,7 +91,7 @@ Then install dependencies:
 uv pip install -r pyproject.toml
 ```
 
-### 3. Set Up Environment Variables
+#### 3. Set Up Environment Variables
 Create a `.env` file or set these variables in your shell:
 
 ```
@@ -63,7 +99,7 @@ OPENWEATHER_API_KEY=your_owm_api_key
 BASE_URL=http://localhost:8000
 TILE_LAYER=precipitation_new  # or clouds_new, temp_new, etc.
 ```
-### 4. Configure TopSky
+#### 4. Configure TopSky
 Place the following in your `TopSkySettings.txt` file. Then configure the bounds of your coordinates
 
 ```
@@ -74,7 +110,7 @@ WXR_Page_Suffix=.png
 WXR_Zoom=4
 ```
 
-### 5. Run the Server
+#### 5. Run the Server
 ```sh
 python main.py
 ```

@@ -1,0 +1,12 @@
+# Requirements for TopSky Weather Radar Bridge
+# Generated from pyproject.toml for PyInstaller compatibility
+
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+pillow>=10.0.0
+numpy>=1.24.0
+python-dotenv
+
+# Additional dependencies for executable building
+pyinstaller>=6.0.0

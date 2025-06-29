@@ -1,0 +1,107 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Build executable with PyInstaller
+      run: |
+        pyinstaller topsky-wxr-bridge.spec
+        
+    - name: Create release package
+      run: |
+        mkdir release-package
+        copy dist\topsky-wxr-bridge.exe release-package\
+        copy config.ini release-package\
+        copy INSTALL.md release-package\
+        copy README.txt release-package\
+        
+    - name: Create ZIP archive
+      run: |
+        powershell Compress-Archive -Path release-package\* -DestinationPath topsky-wxr-bridge-${{ github.ref_name }}-windows.zip
+        
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: topsky-wxr-bridge-windows
+        path: topsky-wxr-bridge-${{ github.ref_name }}-windows.zip
+        
+  create-release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: topsky-wxr-bridge-windows
+        
+    - name: Extract version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: TopSky Weather Radar Bridge ${{ github.ref_name }}
+        body: |
+          ## TopSky Weather Radar Bridge ${{ github.ref_name }}
+          
+          ### 📦 Download and Installation
+          
+          1. **Download** the ZIP file below
+          2. **Extract** to any folder on your computer
+          3. **Edit** `config.ini` and add your OpenWeatherMap API key
+          4. **Run** `topsky-wxr-bridge.exe`
+          5. **Configure** TopSky to use `http://localhost:8000`
+          
+          ### ✨ Features
+          
+          - High-resolution radar tile stitching for enhanced detail
+          - Real-time weather data from OpenWeatherMap
+          - Compatible with TopSky/EuroScope plugins
+          - Easy configuration via config file
+          - No Python installation required
+          
+          ### 📋 Requirements
+          
+          - Windows 10/11
+          - OpenWeatherMap API key (free from https://openweathermap.org/api)
+          - TopSky plugin for EuroScope
+          
+          ### 🆘 Support
+          
+          For issues and support, please visit the [GitHub Issues](https://github.com/${{ github.repository }}/issues) page.
+          
+          ---
+          
+          **Full installation guide available in INSTALL.md inside the ZIP file.**
+        draft: false
+        prerelease: false
+        files: |
+          topsky-wxr-bridge-${{ github.ref_name }}-windows.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
